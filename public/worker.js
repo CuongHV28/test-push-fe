@@ -9,9 +9,10 @@ self.addEventListener("push", (e) => {
     icon: data.icon,
     image: data.image,
     actions: data.actions,
+    data:data.data
   };
   const maxVisibleActions = Notification.maxActions;
-  console.log(maxVisibleActions);
+  console.log("max actions: "+maxVisibleActions);
   if (maxVisibleActions < 4) {
     options.body =
       `This notification will only display ` + `${maxVisibleActions} actions.`;
@@ -20,4 +21,25 @@ self.addEventListener("push", (e) => {
       `This notification can display up to ` + `${maxVisibleActions} actions.`;
   }
   self.registration.showNotification(data.title, options);
+  // inplace of option
+  // {
+  //   actions: [{action: "get", title: "Get now."}]
+  // }
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  // console.log("click action");
+  console.log(event)
+  if(event.action=="")
+  {
+    console.log("notif clicked instead of button");
+    console.log(event);
+    clients.openWindow(`https://${event.notification.data.url}`);
+  }
+  else{
+    console.log(event);
+    clients.openWindow(`https://${event.action}`);
+  }
+  
 });
