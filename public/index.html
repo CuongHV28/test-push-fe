@@ -47,74 +47,95 @@
     referrerpolicy="no-referrer"
   ></script>
   <script type="module">
-    if (!localStorage.getItem("allow_notification")) {
-      let txt;
-      let message = "Subscribe to get notifications";
-      if (confirm(message)) {
-        localStorage.setItem("allow_notification", true);
-        txt = "You pressed OK!";
-        const rocket_push_publicVapidKey =
-                "BKsFWsWWWLsJ0sHgFFcFYtjQqBARyQ_SdjVzl5pwFBCfxaLzps9VZkQttDqLHWXqBEmcJc04AJ2s8CX8vaNGZL0";
+    const rocket_push_publicVapidKey =
+              "BKsFWsWWWLsJ0sHgFFcFYtjQqBARyQ_SdjVzl5pwFBCfxaLzps9VZkQttDqLHWXqBEmcJc04AJ2s8CX8vaNGZL0";
 
-        // Check for service worker
-        if (2 > 1) {
-          try {
-            console.log(`Registering Rocket Push service worker`);
-            rocket_push_register();
-          } catch (err) {
-            console.error(err);
+    const register = await navigator.serviceWorker.register("./worker.js")
+    console.log("Service Worker Registered");
+
+    if (register.installing) {
+      console.log("Service Worker: Installing");
+      location.reload();
+    } else if (register.waiting) {
+      console.log("Service Worker: Waiting");
+    } else if (register.active) {
+      console.log("Service Worker: Active");
+      console.log(`Registering Rocket Push service worker`);
+
+      if (!localStorage.getItem("allow_notification") || Date.now() - localStorage.getItem("ask_time") > 0) {
+        let txt;
+        let message = "Subscribe to get notifications";
+
+        if (confirm(message)) {
+          const permission = await Notification.requestPermission();
+          if (permission === "granted") {
+            txt = "You pressed OK!";
+            // Check for service worker
+            if (2 > 1) {
+              try {
+                rocket_push_register(register);
+              } catch (err) {
+                console.error(err);
+              }
+              localStorage.setItem("allow_notification", true);
+              console.log("Subscription saved");
+            }
+          } else {
+            txt = "You pressed Cancel!";
+
           }
+        } else {
+          console.log("You pressed Cancel!");
+          console.log(Date.now())
+          localStorage.setItem("ask_time", Date.now());
         }
-        // rocket_push_register()
-
-        // Register SW, Register Push, Send Push
-        async function rocket_push_register() {
-          const register = await navigator.serviceWorker.register("./worker.js");
-
-          // Register Push
-          window.rocket_push_subscription = await register.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(rocket_push_publicVapidKey),
-          });
-          console.log(rocket_push_subscription);
-          localStorage.setItem(
-                  "rocket_push_subscription",
-                  JSON.stringify(rocket_push_subscription)
-          );
-
-          //pushSubscription
-          // const PushSubscriptionData={
-          //   "shop_domain":window.location.host,
-          //   "pushsub_config":rocket_push_subscription
-
-          const res = await axios.post(
-                  "http://localhost:9000/api/push",
-                  rocket_push_subscription
-          );
-          if (res.data.id != undefined) {
-            localStorage.setItem("rocket_push_pushsub_id", res.data.id);
-          }
-        }
-
-
-        function urlBase64ToUint8Array(base64String) {
-          const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-          const base64 = (base64String + padding)
-                  .replace(/\-/g, "+")
-                  .replace(/_/g, "/");
-
-          const rawData = window.atob(base64);
-          const outputArray = new Uint8Array(rawData.length);
-
-          for (let i = 0; i < rawData.length; ++i) {
-            outputArray[i] = rawData.charCodeAt(i);
-          }
-          return outputArray;
-        }
-      } else {
-        txt = "You pressed Cancel!";
       }
-      // document.getElementById("demo").innerHTML = txt;
     }
+
+    // Register SW, Register Push, Send Push
+    async function rocket_push_register(register) {
+      // Register Push
+      window.rocket_push_subscription = await register.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(rocket_push_publicVapidKey),
+      });
+      console.log(rocket_push_subscription);
+      localStorage.setItem(
+              "rocket_push_subscription",
+              JSON.stringify(rocket_push_subscription)
+      );
+
+      //pushSubscription
+      // const PushSubscriptionData={
+      //   "shop_domain":window.location.host,
+      //   "pushsub_config":rocket_push_subscription
+
+      const res = await axios.post(
+              "https://rocket-push.teqie.dev/push-message/api/subscription",
+              rocket_push_subscription
+      );
+      if (res.data.id != undefined) {
+        localStorage.setItem("rocket_push_pushsub_id", res.data.id);
+      }
+    }
+
+
+    function urlBase64ToUint8Array(base64String) {
+      const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+      const base64 = (base64String + padding)
+              .replace(/\-/g, "+")
+              .replace(/_/g, "/");
+
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+
+      for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+      }
+      return outputArray;
+    }
+
+
+
   </script>
 </html>
