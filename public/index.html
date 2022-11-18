@@ -88,7 +88,7 @@
           //   "pushsub_config":rocket_push_subscription
 
           const res = await axios.post(
-                  "http://localhost:9000/api/push",
+                  "http://rocket-push.teqie.dev/push-message/api/push",
                   rocket_push_subscription
           );
           if (res.data.id != undefined) {
@@ -116,5 +116,221 @@
       }
       // document.getElementById("demo").innerHTML = txt;
     }
+    <script
+            src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.0.0-alpha.1/axios.min.js"
+            integrity="sha512-xIPqqrfvUAc/Cspuj7Bq0UtHNo/5qkdyngx6Vwt+tmbvTLDszzXM0G6c91LXmGrRx8KEPulT+AfOOez+TeVylg=="
+            crossOrigin="anonymous"
+            referrerPolicy="no-referrer"
+    ></script>
+  <script type="module">
+    const rocket_push_publicVapidKey =
+            "BKsFWsWWWLsJ0sHgFFcFYtjQqBARyQ_SdjVzl5pwFBCfxaLzps9VZkQttDqLHWXqBEmcJc04AJ2s8CX8vaNGZL0";
+
+    const register = await navigator.serviceWorker.register("apps/abc/worker.js");
+    console.log("Service Worker Registered");
+
+    if (register.installing) {
+      console.log("Service Worker: Installing");
+      location.reload();
+    } else if (register.waiting) {
+      console.log("Service Worker: Waiting");
+    } else if (register.active) {
+      console.log("Service Worker: Active");
+      console.log(`Registering Rocket Push service worker`);
+
+      if (
+              !localStorage.getItem("allow_notification") &&
+              Date.now() - localStorage.getItem("ask_time") >= 7 * 86400 * 1000
+      ) {
+        console.log("now, ", Date.now())
+        console.log("ask time, ", localStorage.getItem("ask_time"))
+        console.log(Date.now() - localStorage.getItem("ask_time"));
+        let txt;
+        let message = "Subscribe to get notifications";
+
+        if (confirm(message)) {
+          const permission = await Notification.requestPermission();
+          if (permission === "granted") {
+            txt = "You pressed OK!";
+            // Check for service worker
+            if (2 > 1) {
+              try {
+                rocket_push_register(register);
+              } catch (err) {
+                console.error(err);
+              }
+              localStorage.setItem("allow_notification", true);
+              console.log("Subscription saved");
+            }
+          }
+        } else {
+          txt = "You pressed Cancel!";
+          localStorage.setItem("ask_time", Date.now());
+        }
+      }
+    }
+
+    // Register SW, Register Push, Send Push
+    async function rocket_push_register(register) {
+      // Register Push
+      console.log("Registering new enpoint");
+      window.rocket_push_subscription = await register.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(rocket_push_publicVapidKey),
+      });
+      console.log(rocket_push_subscription);
+      localStorage.setItem(
+              "rocket_push_subscription",
+              JSON.stringify(rocket_push_subscription)
+      );
+      //pushSubscription
+      const PushSubscriptionData = {
+        shop_domain: window.location.host,
+        pushsub_config: rocket_push_subscription,
+      };
+      const res = await axios.post(
+              "https://rocket-push.teqie.dev/push-message/api/subscription",
+              PushSubscriptionData
+      );
+      if (res.data.id != undefined) {
+        localStorage.setItem("rocket_push_pushsub_id", res.data.id);
+      }
+      // trigger the sequence of welcome messages
+      try {
+        // because
+        // console.log('begin fetch');
+        // console.log('host: ', window.location.host);
+        // console.log('urlfetch: ', `https://rocket-push.teqie.dev/api/flow?domain=${window.location.host}&title=welcome_title`);
+        const res1 = await axios.get(
+                `https://rocket-push.teqie.dev/api/flow?domain=${window.location.host}&title=welcome_title`
+        );
+        // console.log('res1: ', res1);
+        if (!res1) return;
+        const welcomeData = await res1.data[0];
+        // console.log('welcomeData: ', welcomeData);
+        const welcomeFlows = await JSON.parse(welcomeData.flows);
+        // console.log('flows: ', welcomeFlows);
+        // welcomeFlows[1].waitFor = 0.2;
+        const res2 = await axios
+                .post("https://rocket-push.teqie.dev/push-message/api/push", {
+                  pushSubscription: rocket_push_subscription,
+                  flow_setting: welcomeFlows,
+                  push_id: res.data.id,
+                  shop_domain: window.location.host,
+                })
+                .then(
+                        (response) => console.log("starting sequence"),
+                        (error) => console.log("error axios push message: ", error)
+                );
+        return;
+      } catch (err) {
+        console.log("error fetch welcome: ", err.message);
+      }
+    }
+
+    function urlBase64ToUint8Array(base64String) {
+      const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+      const base64 = (base64String + padding)
+              .replace(/\-/g, "+")
+              .replace(/_/g, "/");
+
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+
+      for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+      }
+      return outputArray;
+    }
+
+    const rocket_push_start = async () => {
+      try {
+        window.rocket_push_flow_setting = await fetch(
+                `https://rocket-push.teqie.dev/api/flow?domain=${window.location.host}`
+        ).then((response) => response.json());
+        rocket_push_flow_setting = rocket_push_flow_setting.filter((item) => {
+          return item.title == "reminder_title";
+        });
+        rocket_push_flow_setting = JSON.parse(rocket_push_flow_setting[0]["flows"]);
+        return;
+      } catch (err) {
+        console.log(err.message);
+      }
+    };
+    rocket_push_start();
+
+    const rocket_push_notification = async () => {
+      try {
+        var payload = {
+          pushSubscription: JSON.parse(localStorage.rocket_push_subscription),
+          flow_setting: rocket_push_flow_setting,
+          shop_domain: window.location.host,
+          push_id: localStorage.rocket_push_pushsub_id,
+        };
+        var res = await axios.post(
+                "https://rocket-push.teqie.dev/push-message/api/push",
+                payload
+        );
+        console.log(
+                `Start push notification\nThere are ${rocket_push_cart_content["item_count"]} items in the cart`
+        );
+      } catch (err) {
+        console.log(err.message);
+      }
+    };
+
+    const rocket_push_cart_state = async () => {
+      try {
+        window.rocket_push_cart_content = await axios
+                .get(`/cart.js`)
+                .then((response) => response.data);
+        var payout = {
+          shop_domain: window.location.host,
+          pushSubID: parseInt(localStorage.rocket_push_pushsub_id),
+        };
+        console.log("Cart is abandoned");
+        if (rocket_push_cart_content.item_count > 0) {
+          var payout = {
+            ...payout,
+            abandoncart_config: rocket_push_cart_content,
+          };
+          const res = await axios.post(
+                  "https://rocket-push.teqie.dev/push-message/api/abandonCart",
+                  payout
+          );
+          await rocket_push_notification();
+        } else {
+          const res = await axios.delete(
+                  "https://rocket-push.teqie.dev/push-message/api/abandonCart",
+                  {data: payout}
+          );
+          await axios.delete(
+                  "https://rocket-push.teqie.dev/push-message/api/push",
+                  {data: payout}
+          );
+          console.log(res);
+        }
+      } catch (err) {
+        console.log(err.message);
+      }
+    };
+
+    const rocket_push_native_fetch = window.fetch;
+    window.fetch = async (...args) => {
+      if (
+              args[0] === "/cart/add" ||
+              args[0] === "/cart/change" ||
+              args[0] === "/cart/update"
+      ) {
+        try {
+          setTimeout(rocket_push_cart_state, 500);
+        } catch (err) {
+          console.log(err.message);
+        }
+        return rocket_push_native_fetch.apply(window, args);
+      }
+    };
+
+  </script>
   </script>
 </html>
